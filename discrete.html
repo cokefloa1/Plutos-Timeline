@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pluto’s Timeline</title>
+  <link rel="stylesheet" href="discrete.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="app">
+    <div class="header">
+        <div class="logo">P</div>
+        <h1>Pluto’s Timeline: DLSU-D Planner Lite</h1>
+    </div>
+
+    <div class="layout">
+      <div class="calendar-area">
+        <div class="month-row">
+          <span class="month" id="month-name">DECEMBER</span>
+          <span class="year" id="year-num">2025</span>
+        </div>
+        <div class="days">
+          <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+        </div>
+        <div class="dates" id="calendar-grid"></div>
+      </div>
+
+      <div class="sidebar">
+        <div class="box mini-calendar-box">
+          <div class="mini-title">CALENDAR</div>
+          <div class="mini-date">DEC 2025</div>
+          <div class="mini-grid" id="mini-grid">
+            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            <span class="prev-month">30</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+            <span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span>
+            <span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span>
+            <span>21</span><span>22</span><span>23</span><span>24</span><span>25</span><span>26</span><span>27</span>
+            <span>28</span><span>29</span><span>30</span><span>31</span><span class="prev-month">1</span><span class="prev-month">2</span><span class="prev-month">3</span>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="label">SEARCH/VIEW</div>
+            <button id="view-all-btn" style="font-size:9px; background:#333; color:white; border:none; border-radius:3px; padding:2px 5px; cursor:pointer;">View All</button>
+        </div>
+        <input type="text" id="search-input" class="sidebar-input" placeholder="Find event...">
+        
+        <div class="box content-box" id="display-area" style="text-align: left; font-weight: 500; padding: 10px; background: white; border-radius: 4px; margin-bottom: 5px; height: 120px; overflow-y: auto; font-size: 11px;">No date selected</div>
+
+        <div class="label">ADD NEW TASK</div>
+        <textarea id="add-note-area" class="sidebar-input add-box" placeholder="Prof - Course - Task - Time"></textarea>
+        
+        <div class="button-group">
+            <button id="save-btn" class="btn">Add Task</button>
+            <button id="done-btn" class="btn">Mark Day Done</button>
+            <button id="clear-btn" class="btn">Clear All Data</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fs = require('fs');
+    const path = require('path');
+    const bigGrid = document.getElementById('calendar-grid');
+    const noteArea = document.getElementById('add-note-area');
+    const displayArea = document.getElementById('display-area');
+    const searchInput = document.getElementById('search-input');
+    
+    const dataPath = path.join(__dirname, 'planner-data.json');
+    const dictPath = path.join(__dirname, 'academic-dictionary.json');
+
+    const year = 2025;
+    const monthIndex = 11;
+
+    let plannerData = {}; 
+    let academicDictionary = [];
+
+    function loadDataFromFile() {
+      if (fs.existsSync(dataPath)) {
+        try { plannerData = JSON.parse(fs.readFileSync(dataPath)); } catch (e) { plannerData = {}; }
+      }
+      if (fs.existsSync(dictPath)) {
+        try { academicDictionary = JSON.parse(fs.readFileSync(dictPath)); } catch (e) { academicDictionary = []; }
+      }
+      loadBigCalendar();
+      setupMiniCalendar();
+    }
+
+    function loadBigCalendar() {
+      bigGrid.innerHTML = '';
+      const firstDay = new Date(year, monthIndex, 1).getDay();
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+      for (let i = 0; i < firstDay; i++) bigGrid.appendChild(document.createElement('span'));
+      for (let day = 1; day <= daysInMonth; day++) {
+        const span = document.createElement('span');
+        span.setAttribute('data-day', day);
+        span.id = `big-day-${day}`;
+        if (plannerData[day]) {
+          span.classList.add('selected');
+          if (plannerData[day].done) span.classList.add('completed');
+          const noteDiv = document.createElement('div');
+          noteDiv.className = 'cell-note';
+          (plannerData[day].text || "").split('\n').forEach(line => {
+            if(line.trim() !== "") {
+              const bullet = document.createElement('div');
+              bullet.className = 'bullet-item';
+              bullet.innerText = line.replace(/^-/, '').trim();
+              noteDiv.appendChild(bullet);
+            }
+          });
+          span.appendChild(noteDiv);
+        }
+        span.addEventListener('click', () => selectDay(day));
+        bigGrid.appendChild(span);
+      }
+    }
+
+    function setupMiniCalendar() {
+      const miniSpans = document.querySelectorAll('.mini-grid span:not(.prev-month)');
+      miniSpans.forEach(span => {
+        const dayNum = parseInt(span.innerText);
+        if (!isNaN(dayNum)) {
+          span.id = `mini-day-${dayNum}`;
+          span.classList.remove('selected', 'completed');
+          if (plannerData[dayNum]) {
+            span.classList.add('selected');
+            if (plannerData[dayNum].done) span.classList.add('completed');
+          }
+          span.onclick = () => selectDay(dayNum);
+        }
+      });
+    }
+
+    let activeDay = null;
+    function selectDay(dayNumber) {
+      document.querySelectorAll('.current-selection').forEach(el => el.classList.remove('current-selection'));
+      document.querySelectorAll('.search-match').forEach(el => el.classList.remove('search-match'));
+      activeDay = dayNumber;
+      const bigEl = document.getElementById(`big-day-${dayNumber}`);
+      const miniEl = document.getElementById(`mini-day-${dayNumber}`);
+      if(bigEl) bigEl.classList.add('current-selection');
+      if(miniEl) miniEl.classList.add('current-selection');
+      refreshDisplayArea(dayNumber);
+      noteArea.value = ""; 
+    }
+
+    function refreshDisplayArea(dayNumber) {
+        const entry = plannerData[dayNumber];
+        if (entry && entry.text) {
+            const tasks = entry.text.split('\n').filter(t => t.trim() !== "");
+            let html = `<div style="margin-bottom:5px;"><b>Dec ${dayNumber} Tasks:</b></div>`;
+            tasks.forEach((task, idx) => {
+                html += `<div class="search-result-item" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>${task}</span>
+                    <button onclick="deleteSpecificTask(${dayNumber}, ${idx})" style="background:none; border:none; color:#d9534f; cursor:pointer;">✕</button>
+                </div>`;
+            });
+            displayArea.innerHTML = html;
+        } else {
+            displayArea.innerText = `Dec ${dayNumber}: No tasks.`;
+        }
+    }
+
+    function deleteSpecificTask(day, index) {
+        if (!confirm("Remove this task?")) return;
+        const tasks = plannerData[day].text.split('\n').filter(t => t.trim() !== "");
+        const taskToDelete = tasks[index];
+        tasks.splice(index, 1);
+        if (tasks.length === 0) delete plannerData[day];
+        else plannerData[day].text = tasks.join('\n');
+        academicDictionary = academicDictionary.filter(entry => !(entry.dueDate == day && taskToDelete.includes(entry.task)));
+        saveAll();
+    }
+
+    function saveAll() {
+        fs.writeFileSync(dataPath, JSON.stringify(plannerData, null, 2));
+        fs.writeFileSync(dictPath, JSON.stringify(academicDictionary, null, 2));
+        loadBigCalendar();
+        setupMiniCalendar();
+        if(activeDay) refreshDisplayArea(activeDay);
+    }
+
+    // --- SORTING ALGORITHM: MERGE SORT (RECURSIVE) ---
+    function merge(left, right) {
+        let result = [];
+        while (left.length && right.length) {
+            if (parseInt(left[0].dueDate) <= parseInt(right[0].dueDate)) {
+                result.push(left.shift());
+            } else {
+                result.push(right.shift());
+            }
+        }
+        return [...result, ...left, ...right];
+    }
+
+    function mergeSort(array) {
+        if (array.length <= 1) return array;
+        const mid = Math.floor(array.length / 2);
+        const left = mergeSort(array.slice(0, mid));
+        const right = mergeSort(array.slice(mid));
+        return merge(left, right);
+    }
+
+    document.getElementById('view-all-btn').addEventListener('click', () => {
+        if (academicDictionary.length === 0) {
+            displayArea.innerText = "Dictionary is empty.";
+            return;
+        }
+        const sortedList = mergeSort([...academicDictionary]);
+        let html = `<b>Master Task List:</b><br>`;
+        sortedList.forEach((m) => {
+            html += `<div class="search-result-item" style="border-bottom:1px solid #ddd; padding:5px 0; cursor:pointer;" onclick="selectDay(${m.dueDate})">
+                <span style="color:#2196F3; font-weight:700;">Dec ${m.dueDate}</span> 
+                <span style="font-size:9px; color:#666;">(${m.time || 'No Time'})</span><br>
+                <b>${m.course}</b>: ${m.task}
+            </div>`;
+        });
+        displayArea.innerHTML = html;
+    });
+
+    // --- SEARCHING ALGORITHM: MANUAL LINEAR SEARCH ---
+    searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        document.querySelectorAll('.search-match').forEach(el => el.classList.remove('search-match'));
+        if (term.trim() === "") {
+            if (activeDay) refreshDisplayArea(activeDay);
+            return;
+        }
+        displayArea.innerHTML = "";
+        for (let i = 0; i < academicDictionary.length; i++) {
+            let record = academicDictionary[i];
+            if (record.prof.toLowerCase().includes(term) || 
+                record.course.toLowerCase().includes(term) || 
+                record.task.toLowerCase().includes(term)) {
+                const cell = document.getElementById(`big-day-${record.dueDate}`);
+                if (cell) cell.classList.add('search-match');
+                const div = document.createElement('div');
+                div.className = 'search-result-item';
+                div.innerHTML = `<b>${record.course}</b> (Dec ${record.dueDate}) @ ${record.time || 'N/A'}<br>${record.task}`;
+                div.onclick = () => selectDay(record.dueDate);
+                displayArea.appendChild(div);
+            }
+        }
+    });
+
+    document.getElementById('save-btn').addEventListener('click', () => {
+      if (activeDay) {
+          const val = noteArea.value.trim();
+          if (val === "") return;
+          const parts = val.split('-').map(p => p.trim());
+          
+          // Logic for 4-tuple: Prof - Course - Task - Time
+          if (parts.length >= 4) {
+              academicDictionary.push({ 
+                  prof: parts[0], 
+                  course: parts[1], 
+                  task: parts[2], 
+                  time: parts[3], 
+                  dueDate: activeDay.toString() 
+              });
+          } else if (parts.length === 3) {
+              academicDictionary.push({ 
+                  prof: parts[0], 
+                  course: parts[1], 
+                  task: parts[2], 
+                  time: "All Day", 
+                  dueDate: activeDay.toString() 
+              });
+          }
+
+          if (!plannerData[activeDay]) plannerData[activeDay] = { text: val, done: false };
+          else plannerData[activeDay].text += "\n" + val;
+          saveAll();
+          noteArea.value = "";
+          alert("Task Added with Time!");
+      }
+    });
+
+    document.getElementById('done-btn').addEventListener('click', () => {
+      if (activeDay && plannerData[activeDay]) {
+          plannerData[activeDay].done = !plannerData[activeDay].done;
+          saveAll();
+      }
+    });
+
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      if (confirm("Wipe all data?")) {
+          plannerData = {}; academicDictionary = [];
+          if (fs.existsSync(dataPath)) fs.unlinkSync(dataPath);
+          if (fs.existsSync(dictPath)) fs.unlinkSync(dictPath);
+          loadBigCalendar(); setupMiniCalendar();
+          displayArea.innerText = "No date selected";
+      }
+    });
+
+    loadDataFromFile();
+  </script>
+</body>
+</html>
